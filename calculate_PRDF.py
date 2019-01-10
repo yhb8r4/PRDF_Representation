@@ -1,15 +1,22 @@
 #!/usr/bin/python
-
 import pandas as pd
 import numpy as np
 import itertools
-import matplotlib
-import matplotlib.pyplot
+#import matplotlib
+#import matplotlib.pyplot
 from string import digits
 import sys
+import time
+import glob
+'''
+    Wrong Input Format Detected:
+    Usage: calculate_PRDF.py file1 file2 [-m]
+    -m: print multiple cos distances between file1 and any files start as file2.
+    example: calculate_PRDF.py opt.xyz x [-m]
+'''
 sys.tracebacklimit = 0
 np.seterr(divide='ignore', invalid='ignore')
-
+#   O(n * m)
 def get_atom_count(df,atom):
     atoms=[]
     for i in df[0]:
@@ -20,53 +27,54 @@ def get_atom_count(df,atom):
     number=atoms.count(u_atom)
     return(number)
 
+#   O(n * m)
 def get_atom_types(df):
     atoms=[]
     
     for i in df[0]:
-        
         atoms.append(" ".join([x for x in i if not x.isdigit()]))
     
     atom_types=np.unique(atoms)
-    
-    return(atom_types)
+    return(np.array(atom_types))
 
 def get_atom_groups(atom_types,df):
     #this classifies all atoms in the system into atom_groups by atom_types
     atom_groups=[[] for i in range(len(atom_types))]
-    
+
     for i, atom in enumerate(atom_types):
         temp=[]
         for atom_index, atom_names in enumerate(df[0]):
             if atom in atom_names:
                 temp.append(np.array(df.iloc[atom_index]))
+
         atom_groups[i].append(temp)
- 
-    return(atom_groups)
-            #temp.append(np.array(df.iloc[atom_index]))
-    
+    return(np.array(atom_groups))
+
+#   O(n^2)
 def get_group_perm(atom_groups):
-    
     atom_range=list(range(0,len(atom_groups)))
     atom_group_perm=[]
     
     for p in itertools.product(atom_range, repeat=2):
         atom_group_perm.append(p)
-        
-    return(atom_group_perm)
 
+    return(np.array(atom_group_perm))
+
+#   O(n)
 def get_max_atom_distance(i,j,atom_groups):
     bond_distances=[]
     for x in itertools.product(atom_groups[i][0],atom_groups[j][0]):
+        x = np.array(x)
         D=(x[0][1:4]-x[1][1:4])**2
         D=np.sqrt(D[0]+D[1]+D[2])
         
         bond_distances.append(D)
     #print(np.amax(bond_distances), i, j)
+
     return(np.amax(bond_distances))
-        
         #print(x[0][0:4],x[1][0:4])
         
+#   O(n^2)
 def get_unit_cell_diagonal(atom_range,atom_groups):
     list_of_max_bonds=[]
 
@@ -76,39 +84,37 @@ def get_unit_cell_diagonal(atom_range,atom_groups):
     #returns R or Diagonal/2
     return(np.amax(list_of_max_bonds))
 
+#   O(1)
 def get_atom_density(N_atom,d):
-    
-    Volume=4*np.pi*(d/2)**3
-    
+    Volume=2*np.pi*(d)**3   #Volume=4*np.pi*(d/2)**3
     return(N_atom/Volume)
 
+#   O(n^2)
 def get_product(i,j,atom_groups):
     for x in itertools.product(atom_groups[i][0],atom_groups[j][0]):
         print(x[0][0],x[1][0])
         #print(x[0][0:4],x[1][0:4])
-        
+
+#   O(n^2)
 def get_product_distance_different_atoms(i,j,atom_groups):
     for x in itertools.product(atom_groups[i][0],atom_groups[j][0]):
         X=(x[0][1]-x[1][1])**2
         Y=(x[0][2]-x[1][2])**2
         Z=(x[0][3]-x[1][3])**2
-                    
         D=np.sqrt(X+Y+Z)
         
         #print(x[0][0], x[1][0], D)
         #print(x[0][0:4],x[1][0:4])
 
-
 def get_RDF_histogram(i,j,atom_groups,df,d):
-    
     histo_input=[]
-    
     #calculate distances between atom pairs
+
     for x in itertools.product(atom_groups[i][0],atom_groups[j][0]):
         X=(x[0][1]-x[1][1])**2
         Y=(x[0][2]-x[1][2])**2
         Z=(x[0][3]-x[1][3])**2
-                    
+
         D=np.sqrt(X+Y+Z)
         
         #print(x[0][0], x[1][0], D)
@@ -132,7 +138,8 @@ def get_RDF_histogram(i,j,atom_groups,df,d):
     histo_output=np.histogram(histo_input,bins=bins,range=(histo_min,histo_max))
     
     #histo_y=histo_output[0]/(4*np.pi*histo_output[1]**2)
-    histo_y=histo_output[0]/((4*np.pi*histo_output[1][:-1]**2))
+    histo_y=histo_output[0]/((4* np.pi*histo_output[1][:-1]**2))
+
     histo_y=histo_y/((rho))
     
     #normalized_histo=np.array(histo_y,histo_output[1])
@@ -149,7 +156,8 @@ def get_RDF_histogram(i,j,atom_groups,df,d):
     #matplotlib.pyplot.savefig('temp.png')
     
     ##########################
-    
+ #   end = time.time()
+  #  print("get_RDF_histogram:", end - start)
     return(histo_y)
     
     #print(len(histo_output[0]),len(histo_output[1]))
@@ -162,7 +170,7 @@ def get_fingerprint(file):
     #read xyz file in
     df=pd.read_csv(file,skiprows=[0,1], header=None, 
             delim_whitespace=True)
-
+    
     #get atom_types from atom_names
     atom_types=get_atom_types(df)
     
@@ -170,21 +178,20 @@ def get_fingerprint(file):
     atom_groups=get_atom_groups(atom_types,df)
     
     #get atom_atom permutation of types returns list of indexes of group_types
-    atom_group_perm=get_group_perm(atom_types)
+    #atom_group_perm=get_group_perm(atom_types)
     
     #get atom_range
     atom_range=(list(range(0,len(atom_groups))))
     
     #get unit_cell diagonal
     d=get_unit_cell_diagonal(atom_range,atom_groups)
-    
-    for i in atom_group_perm:
-        temp=get_RDF_histogram(i[0],i[1],atom_groups,df,d)
         
-        temp[np.isinf(temp)] = 0
-        temp[np.isnan(temp)] = 0
-
-        fingerprint.extend(temp)
+    for i in range(len(atom_groups)):
+        for j in range(len(atom_groups)):
+            temp=get_RDF_histogram(i,j,atom_groups,df,d)
+            temp[np.isinf(temp)] = 0
+            temp[np.isnan(temp)] = 0
+            fingerprint.extend(temp)
 
         #get_product_distance_different_atoms(i[0],i[1], atom_groups)
         #get_product_distance(i[0],i[1], atom_groups)
@@ -196,23 +203,42 @@ def get_fingerprint(file):
     
     #print(fingerprint)
     return(fingerprint)
-
 def main():
-	sys.tracebacklimit = 0
-	file1=sys.argv[1]
-	file2=sys.argv[2]
-
-	histo_1=get_fingerprint(file1)
-	histo_2=get_fingerprint(file2)
+    sys.tracebacklimit = 0
+    input_len = len(sys.argv)
+    file1=sys.argv[1]
+    file2=sys.argv[2]
     
-	a=np.array(np.array(histo_1[1:])+1)
-	b=np.array(np.array(histo_2[1:])+1)
+    file3 = False # indicator of *
+    if(input_len > 3):
+        if sys.argv[3] == "-m":
+            file3 = True
+            file2 += "*"
+        else:
+            print("Wrong Input Format Detected:");
+            print("\tUsage: calculate_PRDF.py file1 file2 [-m]")
+            print("\t-m: print multiple cos distances between file1 and any files start as file2.")
+            print("\texample: calculate_PRDF.py opt.xyz x [-m]")
+            exit() 
 
-	signed_vector_product=sum(filter(lambda x: x != float('-inf'), a*b))
-	unsigned_vector_a=sum(filter(lambda x: x != float('-inf'), abs(a)))
-	unsigned_vector_b=sum(filter(lambda x: x != float('-inf'), abs(b)))
-	cos_distance=signed_vector_product/(unsigned_vector_a*unsigned_vector_b)
-	print(cos_distance)
+    # calculate the histo_1 for file 1
+    histo_1=get_fingerprint(file1)
+    # calculate matrix from histo_1
+    a=np.array(np.array(histo_1[1:])+1)
+    # got all files or single file from file2
+    files = glob.glob(file2)
+    # calculate each histo_2 and matrix in the loop 
+    # and calculate the cos distances
+    for i in files:
+        histo_2 = get_fingerprint(i)
+        b=np.array(np.array(histo_2[1:])+1)
+
+        signed_vector_product=sum(filter(lambda x: x != float('-inf'), a*b))
+        unsigned_vector_a=sum(filter(lambda x: x != float('-inf'), abs(a)))
+        unsigned_vector_b=sum(filter(lambda x: x != float('-inf'), abs(b)))
+
+        cos_distance = signed_vector_product / (unsigned_vector_a * unsigned_vector_b)
+        print("cos:", cos_distance)
 
 if __name__=="__main__":
-	main()
+    main()
